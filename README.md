@@ -1,49 +1,234 @@
 # Factor Risk Model
 
 A Barra-style multi-factor equity risk model for the S&P 500, built from eight years of
-daily OHLCV data. The model explains stock returns with 11 GICS sector factors plus four
-style factors (Beta, Momentum, Size, ResVol), estimates covariance with USE4-style EWMA
-half-lives, and saves to plain CSV/JSON so any portfolio can be analyzed in milliseconds —
-including bolting on custom thematic factors (e.g. an "AI" factor) without refitting.
+daily OHLCV data. It explains stock returns with **11 GICS sector factors** and **4 style
+factors** (Beta, Momentum, Size, ResVol), estimates covariance with USE4-style **EWMA
+half-lives**, and saves to plain CSV/JSON so any portfolio can be analyzed in
+milliseconds — including bolting on **custom thematic factors** (e.g. an "AI" factor)
+without refitting.
 
-**Headline numbers**: mean cross-sectional R² rises from 0.29 (sectors only) to 0.38 with
-styles; the EWMA covariance (half-life 84d) puts the equal-weight portfolio at ~13.5%
-predicted vol vs ~20% under a flat 8-year covariance — the difference between measuring
-the current regime and averaging over COVID.
+```python
+from risk_model import RiskModel
+
+m = RiskModel.load('model')
+m.report({'AAPL': 0.4, 'XOM': 0.3, 'JPM': 0.3})
+m.add_factor('AI', ['NVDA', 'MSFT', 'AVGO', 'AMD'])
+```
+
+---
+
+## Why factor models exist
+
+A portfolio's risk is `w' Σ w`, where Σ is the covariance of all stock returns. Estimating
+Σ directly is hopeless: 503 stocks means **126,756 pairwise covariances** estimated from
+~2,000 daily observations — mostly noise, and unusable for optimization. A factor model
+compresses the problem: stocks co-move because they share a small number of common
+drivers, so model each stock's return as its exposures to K factors plus a leftover all
+its own:
+
+$$r_t = X_t f_t + \varepsilon_t \qquad\Rightarrow\qquad \Sigma = B\,F\,B^\top + D$$
+
+| Piece | Shape | Meaning |
+|---|---|---|
+| $B$ | N×15 | each stock's factor **exposures** (which sector it's in, how high-beta it is, …) |
+| $F$ | 15×15 | covariance of the **factor returns** — the only dense object left to estimate |
+| $D$ | N×N diagonal | each stock's **specific variance** — risk no factor explains |
+
+Instead of 127k noisy parameters, you estimate ~120 factor covariances and 503 specific
+variances. The payoff goes beyond stability: risk becomes **explainable** ("your book is
+24% vol, and 23 points of that is the Information Technology factor"), hedgeable, and
+attributable.
+
+## The data
+
+Daily OHLCV bars from Databento (XNAS ITCH), May 2018 → Aug 2026: 18.9M rows across
+~23,600 symbols, filtered to the 503 current S&P 500 members with a GICS sector mapping
+(`sp500.csv`). Returns are simple daily returns from unadjusted closes with no forward
+filling; |return| > 50% prints (bad data, raw split jumps) are masked to NaN.
+
+## Layer 1 — sector factors (`factor_risk_model.ipynb`)
+
+The simplest exposures possible: eleven 0/1 dummies, one per GICS sector. Each day, the
+model runs one cross-sectional OLS of that day's stock returns on the dummies,
+$\hat f_t = (X_t^\top X_t)^{-1} X_t^\top r_t$, using only the names that traded. Because
+the dummies are disjoint, this regression provably collapses to **each sector's
+equal-weighted mean return** — so a single `groupby` runs all ~2,000 daily regressions
+and handles missing names for free. Each factor's return series is a real, investable
+thing: the daily P&L of holding that sector's names equally.
+
+![Cumulative sector factor returns](docs/img/sector_factor_returns.png)
+
+Sector factors alone explain a mean cross-sectional R² of **0.29** — a third of a typical
+day's return dispersion is just "which sector are you in."
+
+A key empirical fact falls out immediately: single-stock risk is mostly **specific** (the
+median stock's residual vol, dashed line, beats every sector factor's vol), which is why
+diversification works — and why portfolio risk is dominated by factors instead:
+
+![Annualized factor volatility](docs/img/sector_factor_vols.png)
+
+The factor covariance/correlation structure shows the market factor hiding inside the
+sector means — every sector correlates 0.4–0.9 with every other:
+
+![Sector factor covariance and correlation](docs/img/sector_cov_corr.png)
+
+## Layer 2 — style factors (`style_factors.ipynb`)
+
+Stocks also co-move in ways that cut **across** sectors: high-beta names rally together,
+winners keep winning, small illiquid names trade alike. Styles capture this with
+continuous exposures in the spirit of Barra USE4, each built with Barra's own half-life
+weighting:
+
+| Style | Barra analog | Construction |
+|---|---|---|
+| **Beta** | BETA | EWMA regression vs the equal-weighted market, half-life 63d |
+| **Momentum** | RSTR | EWMA-weighted return, half-life 126d, skipping the last month (reversal lives there) |
+| **Size** | SIZE / LIQUIDTY | log 63d median dollar volume — a split-robust proxy; true size needs shares outstanding |
+| **ResVol** | DASTD | EWMA std of the *sector-model* residuals, half-life 42d |
+
+Every exposure is winsorized at ±3σ, z-scored across the universe daily (mean 0, std 1),
+and **lagged one day** so day *t*'s return is only explained by information through
+*t−1*. With continuous exposures the `groupby` shortcut dies, so each day is an explicit
+15-coefficient least-squares fit. Mean cross-sectional R² rises from 0.29 to **0.38**.
+
+Because exposures are standardized z-scores, each style factor return is the P&L of a
+**zero-cost, sector-neutral portfolio with +1σ of that style** — momentum is literally
+"winners minus losers, sector-neutralized":
+
+![Cumulative style factor returns](docs/img/style_factor_returns.png)
+
+The full 15×15 correlation matrix confirms the styles earn their place: they are nearly
+orthogonal to the sector block (Beta's ~0.6 correlation with sectors is real economics —
+high-beta names co-move with the market — not redundancy):
+
+![Factor return correlations](docs/img/factor_correlation.png)
+
+## Layer 3 — covariance the Barra way (half-lives)
+
+A flat sample covariance weights 2018 and last week equally. Barra instead makes every
+moment an EWMA — an observation aged τ days gets weight (1/2)^(τ/HL) — with a
+**different memory for different quantities**, plus a Newey-West (Bartlett) adjustment
+for serial correlation:
+
+| Quantity | Half-life | Newey-West lags |
+|---|---|---|
+| factor **variances** | 84d | 5 |
+| factor **correlations** | 504d | 2 |
+| **specific** variances | 84d | 5 |
+
+Short vol memory makes risk track the current regime; long correlation memory keeps the
+structure stable. Variances and correlations are estimated separately, recombined, and
+repaired to positive semi-definite. The effect is large: flat 8-year factor vols run
+20–31% (they average over COVID and 2022), the EWMA vols run 13–21%, and the equal-weight
+portfolio's predicted vol drops from **19.9% to 13.5%** — the difference between
+measuring today's regime and averaging over history.
+
+---
+
+## Using the model
+
+`style_factors.ipynb` fits everything and saves it to `model/` as plain CSV + JSON
+(version-proof, unlike pickles). From there, no raw data is ever touched again —
+`portfolio_analysis.ipynb` is the worked demo of everything below.
+
+### Instant portfolio risk
+
+Weights are fractions of NAV; shorts and net ≠ 1 are fine; unknown tickers are warned
+about and ignored. Actual output for a 5-name mega-cap tech book:
+
+```text
+>>> m.report({'AAPL': .2, 'MSFT': .2, 'NVDA': .2, 'GOOGL': .2, 'AMZN': .2})
+
+net +1.00  gross 1.00   (model fit: 2026-08-07)
+total vol    :  23.89%
+  factor     :  19.81%   (68.8% of variance)
+  specific   :  13.35%   (31.2% of variance)
+style exposures (z-units): Beta -0.14  Momentum +0.30  Size +3.07  ResVol +0.33
+
+top factor variance contributors:
+Information Technology    0.316
+Size                      0.229
+Communication Services    0.065
+```
+
+The model reads the book correctly with no help: five names isn't diversified (31% of
+variance still specific), and the +3.1σ Size exposure flags that these are the largest
+names in the universe.
+
+### Custom thematic factors
+
+Any basket of stocks can become a factor — without refitting. The naive approach
+(average return of AI stocks) would mostly re-measure "these are tech stocks," so
+`add_factor` instead defines the factor's daily return as the basket's equal-weighted
+**residual** return: the co-movement that sectors and styles do *not* already explain.
+Exposures gain a 0/1 basket column, the factor covariance grows a row estimated from
+history, and basket names' specific risk drops by what the factor absorbs.
+
+```python
+m.add_factor('AI', ['NVDA', 'MSFT', 'GOOGL', 'META', 'AMZN',
+                    'AVGO', 'AMD', 'ORCL', 'ANET', 'PLTR'])
+# added factor 'AI': 10 names, annualized vol 11.3%,
+# max |corr| with existing factors 0.24
+```
+
+The result is a genuinely new risk source — 11.3% annualized vol, ≤0.24 correlation with
+all 15 existing factors — and its history is the AI era drawn in one line: flat through
+2019, relentless from 2023, +150% peak in late 2025:
+
+![Cumulative AI factor return](docs/img/ai_factor.png)
+
+An AI-tilted book then shows "AI" as an explicit line in its risk decomposition (16% of
+variance for a book with 50% of NAV in basket names), and custom factors compose — a
+second `add_factor` correctly accounts for its correlation with the first.
+
+### Half-life control
+
+The stored history rides along in the artifacts, so the covariance can be re-estimated
+at whim — shorter half-lives for a risk number that reacts to the current regime, longer
+for a steadier one. Custom factors survive the refit.
+
+```python
+m.refit_covariance(vol_half_life=21)   # tech book: 29.4% -> 32.5% (recent vol is hot)
+m.refit_covariance()                   # back to USE4 defaults
+```
+
+### Direct access
+
+- `m.exposures(w)` — the portfolio's 15+ factor exposures
+- `m.decompose(w)` — the full decomposition as a dict, for further computation
+- `m.covariance([...])` — model-implied asset covariance block for any symbols
+- `m.factor_returns` — daily factor return history, for attribution and plots
+- `m.save(path)` — persist an augmented model; `RiskModel.load(path)` round-trips it
+
+---
 
 ## Repository layout
 
 | Path | What it is |
 |---|---|
-| `BinaryClassification/factor_risk_model.ipynb` | The basic model: sector 0/1 dummies only. Start here — it derives why the daily cross-sectional OLS collapses to sector means. |
-| `BinaryClassification/style_factors.ipynb` | The full model: style exposures with Barra half-lives, joint daily regressions, USE4-style covariance, fits and **saves the model**. |
-| `BinaryClassification/portfolio_analysis.ipynb` | Using the saved model: portfolio risk reports, the custom "AI" factor, half-life control. |
+| `BinaryClassification/factor_risk_model.ipynb` | Layer 1: the sector-dummy model, derived from scratch. Start here. |
+| `BinaryClassification/style_factors.ipynb` | Layers 2–3: styles, half-life covariance; fits and **saves the model**. |
+| `BinaryClassification/portfolio_analysis.ipynb` | The capabilities demo: reports, the AI factor, half-life control. |
 | `BinaryClassification/risk_model.py` | The library: save/load, portfolio analytics, EWMA/Newey-West estimators, custom factors. |
-| `BinaryClassification/model/` | Saved model artifacts (CSV + JSON — see below). |
+| `BinaryClassification/model/` | Saved model artifacts (below). |
 | `BinaryClassification/sp500.csv` | Symbol → GICS sector map (current S&P 500 membership). |
-| `OLSReg/` | First pass: time-series OLS of single stocks on sector ETF (XL\*) returns. `OLSReg/getData.ipynb` also documents how `8YearsData.pkl` was built from the raw Databento files. |
-| `8YearsData.pkl`, `XNAS-*/`, `filtered_data.pkl` | Data (gitignored): 18.9M rows of daily OHLCV, 2018–2026, from Databento XNAS ITCH; the raw `.dbn.zst` files; the sector-ETF subset used by `OLSReg`. |
+| `OLSReg/` | First pass: time-series OLS of single stocks on sector ETF returns; `getData.ipynb` documents building `8YearsData.pkl` from the raw Databento files. |
+| `docs/img/` | Figures exported from the executed notebooks (used in this README). |
+| `8YearsData.pkl`, `XNAS-*/`, `filtered_data.pkl` | Data (gitignored). |
 
-## The model
+### Model artifacts (`model/`)
 
-Daily cross-sectional regression, one per trading day, on the names present that day:
+| File | Contents |
+|---|---|
+| `exposures.csv` | N×15 latest per-name exposures |
+| `factor_cov.csv` | 15×15 annualized factor covariance (EWMA + Newey-West) |
+| `specific_var.csv` | per-name annualized specific variance |
+| `sectors.csv` | symbol → sector |
+| `factor_returns.csv` | daily factor return history |
+| `residual_returns.csv.gz` | daily specific returns — what enables custom factors and refits |
+| `meta.json` | fit date/window, R², half-life settings, custom-factor registry |
 
-$$r_t = X_t f_t + \varepsilon_t \qquad\Rightarrow\qquad \Sigma = B\,F\,B^\top + D$$
-
-**Exposures** (`X_t`): 11 sector dummies plus four styles, each winsorized at ±3σ,
-z-scored across the universe daily, and lagged one day:
-
-| Style | Barra analog | Construction |
-|---|---|---|
-| Beta | BETA | EWMA regression vs equal-weighted market, half-life 63d |
-| Momentum | RSTR | EWMA-weighted return, half-life 126d, skipping the last month |
-| Size | SIZE/LIQUIDTY | log 63d median dollar volume (proxy — needs shares outstanding for true size) |
-| ResVol | DASTD | EWMA std of sector-model residuals, half-life 42d |
-
-**Covariance** (USE4 daily settings): factor variances EWMA half-life 84d (Newey-West,
-5 lags), factor correlations half-life 504d (2 lags), recombined and repaired to PSD;
-specific variances half-life 84d (5 lags). Not implemented from USE4: eigenfactor risk
-adjustment, volatility regime adjustment.
+`model_ai/` (when present) is generated output from the demo notebook.
 
 ## Quickstart
 
@@ -53,49 +238,27 @@ pip install numpy pandas matplotlib jupyter        # + databento, to rebuild the
 ```
 
 Place `8YearsData.pkl` at the repo root (or rebuild it from the raw Databento directory —
-see `OLSReg/getData.ipynb`), then run `style_factors.ipynb` top to bottom. That fits the
-model and writes `BinaryClassification/model/`.
-
-## Using the saved model
-
-```python
-from risk_model import RiskModel
-
-m = RiskModel.load('model')                       # milliseconds; no raw data needed
-m.report({'AAPL': 0.4, 'XOM': 0.3, 'JPM': 0.3})   # vol, factor/specific split, contributors
-
-m.add_factor('AI', ['NVDA', 'MSFT', 'AVGO', 'AMD', ...])   # custom thematic factor
-m.refit_covariance(vol_half_life=21)              # more reactive risk number
-m.save('model_ai')                                # persist the augmented model
-```
-
-Custom factors are built from **residual** returns — the basket's co-movement beyond what
-sectors and styles already explain — so an "AI" factor measures the theme, not just "these
-are tech stocks". Other entry points: `m.exposures(w)`, `m.decompose(w)` (dict, for
-further computation), `m.covariance([...])`, `m.factor_returns`.
-
-### Model artifacts (`model/`)
-
-| File | Contents |
-|---|---|
-| `exposures.csv` | N×15 latest per-name exposures |
-| `factor_cov.csv` | 15×15 annualized factor covariance |
-| `specific_var.csv` | per-name annualized specific variance |
-| `sectors.csv` | symbol → sector |
-| `factor_returns.csv` | daily factor return history (attribution, custom factors) |
-| `residual_returns.csv.gz` | daily specific returns (enables custom factors) |
-| `meta.json` | fit date/window, R², half-life settings, custom-factor registry |
-
-`model_ai/` (when present) is generated output from `portfolio_analysis.ipynb`.
+see `OLSReg/getData.ipynb`), run `style_factors.ipynb` top to bottom to fit and save,
+then use `portfolio_analysis.ipynb` or three lines of `risk_model.py` anywhere.
 
 ## Known limitations
 
-- **Survivorship bias**: the universe is today's S&P 500 membership applied through
-  history — dead/removed names are absent, so factor returns are somewhat rosy.
-- **Size is a proxy** (dollar volume); true SIZE needs shares outstanding, and Value /
-  Earnings Yield / Growth / Leverage need point-in-time fundamentals.
+- **Survivorship bias** — the universe is *today's* S&P 500 membership applied through
+  history; dead and removed names are absent, so factor returns are somewhat rosy.
+- **Size is a proxy** (dollar volume). True SIZE needs shares outstanding; Value,
+  Earnings Yield, Growth, and Leverage need point-in-time fundamentals the OHLCV data
+  can't provide.
 - Returns come from unadjusted closes: split-day jumps are masked out, dividends excluded.
-- Custom factors use static basket membership and an approximate bolt-on (exact treatment
-  = refit the daily regressions with the basket dummy included).
-- Exposures in the saved model are a snapshot of the fit date — re-run
-  `style_factors.ipynb` after refreshing data.
+- Custom factors use static basket membership and an approximate bolt-on; the exact
+  treatment is refitting the daily regressions with the basket dummy included.
+- USE4 layers not implemented: eigenfactor risk adjustment, volatility regime adjustment.
+- Saved exposures are a snapshot of the fit date — re-run `style_factors.ipynb` after
+  refreshing data.
+
+## Where to take it next
+
+True market-cap SIZE via shares outstanding, fundamentals-based Value/Quality factors,
+√(cap)-weighted WLS in the daily regressions, an estimation universe with historical
+index membership, and forecast calibration (bias statistics, the volatility regime
+adjustment). Each drops into one cell of `style_factors.ipynb` or one method of
+`risk_model.py`.
