@@ -2,3 +2,7 @@
 .venv/*
 .env
 *.pkl
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+/BinaryClassification/model_ai/
