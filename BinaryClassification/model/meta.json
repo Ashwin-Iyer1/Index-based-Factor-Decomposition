@@ -1,0 +1,18 @@
+{
+  "fit_date": "2026-08-07",
+  "window": [
+    "2018-11-20",
+    "2026-08-07"
+  ],
+  "n_days": 1937,
+  "n_names": 503,
+  "mean_xsec_r2": 0.3759,
+  "style_factors": [
+    "Beta",
+    "Momentum",
+    "Size",
+    "ResVol"
+  ],
+  "annualization": 252,
+  "notes": "exposures z-scored to EW mean 0 / std 1, lagged 1 day; Size = log 63d median dollar volume (size/liquidity proxy)"
+}
