@@ -6,7 +6,7 @@
   ],
   "n_days": 1937,
   "n_names": 503,
-  "mean_xsec_r2": 0.3759,
+  "mean_xsec_r2": 0.3798,
   "style_factors": [
     "Beta",
     "Momentum",
@@ -14,5 +14,15 @@
     "ResVol"
   ],
   "annualization": 252,
+  "factor_cov_params": {
+    "vol_half_life": 84,
+    "corr_half_life": 504,
+    "nw_lags_var": 5,
+    "nw_lags_corr": 2
+  },
+  "specific_var_params": {
+    "half_life": 84,
+    "nw_lags": 5
+  },
   "notes": "exposures z-scored to EW mean 0 / std 1, lagged 1 day; Size = log 63d median dollar volume (size/liquidity proxy)"
 }

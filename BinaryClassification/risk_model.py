@@ -43,6 +43,73 @@ def save_model(path, exposures, factor_cov, specific_var, sectors,
     return p
 
 
+# -- Barra-style EWMA / half-life estimators ---------------------------------
+
+def ewma_weights(n, half_life):
+    """Exponential weights for n observations (newest last): obs aged tau days
+    gets weight (1/2)^(tau/half_life). Normalized to sum to 1."""
+    w = 0.5 ** (np.arange(n - 1, -1, -1) / half_life)
+    return w / w.sum()
+
+
+def _nw_cov(X, half_life, nw_lags):
+    """EWMA covariance of the rows of X (newest last), Newey-West adjusted for
+    serial correlation with Bartlett weights. Per-period units."""
+    w = ewma_weights(len(X), half_life)
+    Xc = X - w @ X
+    C = (Xc * w[:, None]).T @ Xc
+    for l in range(1, nw_lags + 1):
+        wl = w[l:] / w[l:].sum()
+        Cl = (Xc[l:] * wl[:, None]).T @ Xc[:-l]
+        C = C + (1 - l / (nw_lags + 1)) * (Cl + Cl.T)
+    return C
+
+
+def ewma_factor_cov(factor_returns, vol_half_life=84, corr_half_life=504,
+                    nw_lags_var=5, nw_lags_corr=2, annualization=252):
+    """Barra USE4-style factor covariance.
+
+    Variances use a short EWMA memory (default half-life 84d, Newey-West 5
+    lags) so vol tracks the current regime; correlations use a long memory
+    (504d, 2 lags) so the structure stays stable. The two are recombined as
+    corr x vol x vol and repaired to positive semi-definite by eigenvalue
+    clipping. USE4's eigenfactor and volatility-regime adjustments are not
+    implemented."""
+    F = factor_returns.dropna()
+    Cv = _nw_cov(F.values, vol_half_life, nw_lags_var)
+    Cc = _nw_cov(F.values, corr_half_life, nw_lags_corr)
+    vol = np.sqrt(np.clip(np.diag(Cv), 1e-12, None))
+    sc = np.sqrt(np.clip(np.diag(Cc), 1e-12, None))
+    corr = Cc / np.outer(sc, sc)
+    cov = corr * np.outer(vol, vol) * annualization
+    lam, V = np.linalg.eigh((cov + cov.T) / 2)
+    cov = (V * np.clip(lam, 0, None)) @ V.T
+    return pd.DataFrame(cov, index=F.columns, columns=F.columns)
+
+
+def ewma_specific_var(residual_returns, half_life=84, nw_lags=5,
+                      annualization=252, min_obs=120):
+    """Per-name EWMA specific variance (annualized), Newey-West adjusted.
+    Names with fewer than min_obs residuals return NaN (caller decides the
+    fallback). The NW term is floored so negative autocorrelation cannot
+    erase more than 90% of the base variance."""
+    E = residual_returns
+    w = pd.Series(0.5 ** (np.arange(len(E) - 1, -1, -1) / half_life), index=E.index)
+    W = E.notna().mul(w, axis=0)
+    wsum = W.sum()
+    mu = (W * E.fillna(0)).sum() / wsum
+    Ec = E.sub(mu, axis=1)
+    v0 = (W * Ec.fillna(0) ** 2).sum() / wsum
+    v = v0.copy()
+    for l in range(1, nw_lags + 1):
+        pair = Ec * Ec.shift(l)
+        Wl = pair.notna().mul(w, axis=0)
+        cl = (Wl * pair.fillna(0)).sum() / Wl.sum().replace(0, np.nan)
+        v = v + 2 * (1 - l / (nw_lags + 1)) * cl.fillna(0)
+    v = v.clip(lower=0.1 * v0)
+    return v.where(E.notna().sum() >= min_obs) * annualization
+
+
 class RiskModel:
     def __init__(self, exposures, factor_cov, specific_var, sectors,
                  factor_returns=None, meta=None, residual_returns=None):
@@ -73,6 +140,49 @@ class RiskModel:
         return save_model(path, self.B, self.F, self.D, self.sectors,
                           factor_returns=self.factor_returns,
                           residual_returns=self.residual_returns, meta=self.meta)
+
+    # -- covariance estimation ----------------------------------------------
+
+    def _factor_cov(self, factor_returns):
+        params = self.meta.get('factor_cov_params')
+        ann = self.meta.get('annualization', 252)
+        if params:
+            return ewma_factor_cov(factor_returns, annualization=ann, **params)
+        return factor_returns.cov() * ann
+
+    def _specific_var(self, residual_returns):
+        params = self.meta.get('specific_var_params')
+        ann = self.meta.get('annualization', 252)
+        if params:
+            return ewma_specific_var(residual_returns, annualization=ann, **params)
+        return residual_returns.var() * ann
+
+    def refit_covariance(self, vol_half_life=84, corr_half_life=504,
+                         nw_lags_var=5, nw_lags_corr=2,
+                         spec_half_life=84, spec_nw_lags=5):
+        """Re-estimate F and D from the stored return history with Barra-style
+        half-lives (defaults = USE4 daily settings). Shorten the half-lives for
+        a more reactive risk number, lengthen for a steadier one."""
+        if self.factor_returns is None or self.residual_returns is None:
+            raise ValueError('model was saved without factor/residual return history — '
+                             're-run the save cell in style_factors.ipynb first')
+        self.meta['factor_cov_params'] = {
+            'vol_half_life': vol_half_life, 'corr_half_life': corr_half_life,
+            'nw_lags_var': nw_lags_var, 'nw_lags_corr': nw_lags_corr}
+        self.meta['specific_var_params'] = {
+            'half_life': spec_half_life, 'nw_lags': spec_nw_lags}
+        self.F = self._factor_cov(self.factor_returns)
+        E = self.residual_returns.copy()
+        for c in self.meta.get('custom_factors', []):        # net out custom factors
+            if c['name'] in self.factor_returns.columns:
+                syms = [s for s in c['symbols'] if s in E.columns]
+                E[syms] = E[syms].sub(self.factor_returns[c['name']], axis=0)
+        D = self._specific_var(E).reindex(self.D.index)
+        self.D = D.fillna(D.median())
+        print(f'refit: factor vol HL {vol_half_life}d / corr HL {corr_half_life}d / '
+              f'specific HL {spec_half_life}d '
+              f'(Newey-West {nw_lags_var}/{nw_lags_corr}/{spec_nw_lags} lags)')
+        return self
 
     # -- custom factors ------------------------------------------------------
 
@@ -105,9 +215,10 @@ class RiskModel:
         self.B[name] = 0.0
         self.B.loc[syms, name] = 1.0
         joint = pd.concat([self.factor_returns, f], axis=1)
-        self.F = joint.cov() * 252                   # existing block is unchanged
+        self.F = self._factor_cov(joint)             # same estimator (EWMA if configured)
         self.factor_returns = joint
-        self.D.loc[syms] = E.sub(f, axis=0).var() * 252
+        newD = self._specific_var(E.sub(f, axis=0))
+        self.D.loc[syms] = newD.fillna(self.D.loc[syms])
         self.meta.setdefault('custom_factors', []).append(
             {'name': name, 'symbols': syms, 'type': 'residual basket (EW)'})
 
