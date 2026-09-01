@@ -243,6 +243,12 @@ are numbered steps at the same frequency as the input. The forecast origin is th
 row in `factor_returns.csv` (currently 2026-08-07 in the checked-in artifact), so refresh
 and refit the model before treating the output as current.
 
+Run `BinaryClassification/timesfm_forecast_analysis.ipynb` after the CLI finishes for a
+fast visual comparison with the zero-return baseline, forecast factor paths, and marginal
+uncertainty bands. It reads the saved CSV output and does not reload the checkpoint.
+
+![TimesFM backtest skill and directional accuracy](docs/img/timesfm_backtest_skill.png)
+
 To project the point path onto a portfolio, save weights such as
 `{"AAPL": 0.4, "XOM": 0.3, "JPM": 0.3}` to a JSON file and add
 `--portfolio-json weights.json`. To use TimesFM 3's covariate support, pass CSVs with
@@ -304,6 +310,7 @@ print(tfm.backtest(horizon=20, windows=6).loc['__overall__'])
 | `BinaryClassification/risk_model.py` | The library: save/load, portfolio analytics, EWMA/Newey-West estimators, custom factors. |
 | `BinaryClassification/timesfm_forecast.py` | TimesFM 3 adapter: joint factor forecasts, marginal quantiles, portfolio projection, rolling backtest. |
 | `BinaryClassification/forecast_factors.py` | CLI for factor/covariate/portfolio forecasts and CSV output. |
+| `BinaryClassification/timesfm_forecast_analysis.ipynb` | Fast visual analysis of TimesFM backtest skill, directional accuracy, factor paths, and marginal uncertainty. |
 | `BinaryClassification/model/` | Saved model artifacts (below). |
 | `BinaryClassification/sp500.csv` | Symbol → GICS sector map (current S&P 500 membership). |
 | `OLSReg/` | First pass: time-series OLS of single stocks on sector ETF returns; `getData.ipynb` documents building `8YearsData.pkl` from the raw Databento files. |

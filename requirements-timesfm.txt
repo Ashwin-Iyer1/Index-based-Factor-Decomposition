@@ -1,4 +1,6 @@
 # Optional forecasting stack. The core risk model only needs numpy and pandas.
 numpy>=1.26.4,<3.0
 pandas>=2.0,<3.0
+matplotlib>=3.8,<4.0
+ipykernel>=6.29,<7.0
 timesfm[torch]==3.0.0
