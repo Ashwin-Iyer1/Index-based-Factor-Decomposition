@@ -246,6 +246,78 @@ class TimesFMFactorForecaster:
         if first_origin < 32:
             raise ValueError("not enough history for the requested backtest windows")
         origins = list(range(first_origin, last_origin + 1, stride))
+        return self._backtest_origins(
+            history,
+            origins,
+            horizon,
+            context_length,
+            symmetric_averaging,
+            split_kind="trailing_windows",
+        )
+
+    def backtest_holdout(
+        self,
+        test_start: str | pd.Timestamp,
+        *,
+        horizon: int = 20,
+        context_length: int = 1536,
+        stride: int | None = None,
+        factors: Iterable[str] | None = None,
+        symmetric_averaging: bool = True,
+    ) -> pd.DataFrame:
+        """Walk forward through a fixed, date-based holdout period.
+
+        The first forecast begins on the first factor-return date at or after
+        ``test_start``. Subsequent non-overlapping windows may use observations
+        revealed earlier in the holdout, matching a live walk-forward process,
+        but never use data from their own forecast horizon.
+
+        TimesFM 3 is zero-shot: the pre-holdout period is model context, not a
+        gradient-training set. The split nevertheless prevents evaluation on
+        dates before the declared test boundary.
+        """
+        horizon, context_length = _validate_lengths(horizon, context_length)
+        stride = horizon if stride is None else stride
+        if stride < 1:
+            raise ValueError("stride must be positive")
+        history = self._history(factors)
+        if not isinstance(history.index, pd.DatetimeIndex):
+            raise ValueError("date-based holdout requires a DatetimeIndex")
+        boundary = pd.Timestamp(test_start)
+        if history.index.tz is not None:
+            if boundary.tzinfo is None:
+                boundary = boundary.tz_localize(history.index.tz)
+            else:
+                boundary = boundary.tz_convert(history.index.tz)
+        elif boundary.tzinfo is not None:
+            boundary = boundary.tz_localize(None)
+        first_origin = int(history.index.searchsorted(boundary, side="left"))
+        last_origin = len(history) - horizon
+        if first_origin < 32:
+            raise ValueError("holdout leaves fewer than 32 pre-test observations")
+        if first_origin > last_origin:
+            raise ValueError("test_start leaves no complete forecast horizon")
+        origins = list(range(first_origin, last_origin + 1, stride))
+        return self._backtest_origins(
+            history,
+            origins,
+            horizon,
+            context_length,
+            symmetric_averaging,
+            split_kind="fixed_holdout",
+        )
+
+    def _backtest_origins(
+        self,
+        history: pd.DataFrame,
+        origins: list[int],
+        horizon: int,
+        context_length: int,
+        symmetric_averaging: bool,
+        *,
+        split_kind: str,
+    ) -> pd.DataFrame:
+        """Evaluate a validated set of rolling forecast origins."""
         contexts = [
             history.iloc[max(0, origin - context_length):origin]
             .to_numpy(dtype=np.float32)
@@ -275,7 +347,21 @@ class TimesFMFactorForecaster:
         for i, factor in enumerate(history.columns):
             rows.append(_metric_row(factor, predictions[:, i], actuals[:, i], error[:, i]))
         rows.append(_metric_row("__overall__", predictions, actuals, error))
-        return pd.DataFrame(rows).set_index("factor")
+        metrics = pd.DataFrame(rows).set_index("factor")
+        first_origin = origins[0]
+        last_observation = origins[-1] + horizon - 1
+        metrics.attrs.update({
+            "split_kind": split_kind,
+            "history_start": str(history.index[0]),
+            "train_end": str(history.index[first_origin - 1]),
+            "test_start": str(history.index[first_origin]),
+            "test_end": str(history.index[last_observation]),
+            "n_windows": len(origins),
+            "horizon": horizon,
+            "stride": origins[1] - origins[0] if len(origins) > 1 else horizon,
+            "context_length": context_length,
+        })
+        return metrics
 
     def _history(self, factors: Iterable[str] | None) -> pd.DataFrame:
         history = self.risk_model.factor_returns.sort_index()

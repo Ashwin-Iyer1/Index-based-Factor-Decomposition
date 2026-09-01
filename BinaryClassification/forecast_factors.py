@@ -42,6 +42,13 @@ def _parser() -> argparse.ArgumentParser:
         default=0,
         help="Also run this many rolling zero-baseline evaluation windows",
     )
+    parser.add_argument(
+        "--test-start",
+        help=(
+            "Run a fixed walk-forward holdout beginning on this date (YYYY-MM-DD); "
+            "cannot be combined with --backtest-windows"
+        ),
+    )
     return parser
 
 
@@ -51,6 +58,8 @@ def _read_covariates(path: str | None) -> pd.DataFrame | None:
 
 def main() -> None:
     args = _parser().parse_args()
+    if args.test_start and args.backtest_windows:
+        raise SystemExit("choose either --test-start or --backtest-windows, not both")
     model = RiskModel.load(args.model_dir)
     factors = None if not args.factors else [x.strip() for x in args.factors.split(",")]
     forecaster = TimesFMFactorForecaster(
@@ -81,17 +90,29 @@ def main() -> None:
     forecast.save(output_dir)
     print(f"Saved {args.horizon}-step forecast to {output_dir.resolve()}")
 
-    if args.backtest_windows:
-        metrics = forecaster.backtest(
-            horizon=args.horizon,
-            context_length=args.context_length,
-            windows=args.backtest_windows,
-            factors=factors,
-        )
+    if args.test_start or args.backtest_windows:
+        if args.test_start:
+            metrics = forecaster.backtest_holdout(
+                args.test_start,
+                horizon=args.horizon,
+                context_length=args.context_length,
+                factors=factors,
+            )
+        else:
+            metrics = forecaster.backtest(
+                horizon=args.horizon,
+                context_length=args.context_length,
+                windows=args.backtest_windows,
+                factors=factors,
+            )
         metrics.to_csv(output_dir / "backtest.csv")
+        (output_dir / "backtest_metadata.json").write_text(
+            json.dumps(metrics.attrs, indent=2)
+        )
         overall = metrics.loc["__overall__"]
         print(
-            "Backtest overall: "
+            f"Backtest {metrics.attrs['test_start'][:10]} to "
+            f"{metrics.attrs['test_end'][:10]} ({metrics.attrs['n_windows']} windows): "
             f"MAE skill vs zero {overall['mae_skill_vs_zero']:+.1%}, "
             f"directional accuracy {overall['directional_accuracy']:.1%}"
         )

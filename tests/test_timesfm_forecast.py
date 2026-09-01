@@ -103,6 +103,27 @@ def test_backtest_compares_with_zero_baseline(risk_model):
     assert metrics.loc["__overall__", "n"] == 30
     assert np.isfinite(metrics.loc["__overall__", "mae_skill_vs_zero"])
     assert evaluator.calls[0]["return_quantiles"] is False
+    assert metrics.attrs["split_kind"] == "trailing_windows"
+    assert metrics.attrs["n_windows"] == 3
+
+
+def test_date_based_holdout_uses_only_complete_test_windows(risk_model):
+    evaluator = FakeEvaluator()
+    forecaster = TimesFMFactorForecaster(risk_model, evaluator=evaluator)
+    test_start = risk_model.factor_returns.index[70]
+
+    metrics = forecaster.backtest_holdout(
+        str(test_start.date()), horizon=5, context_length=64
+    )
+
+    assert metrics.loc["__overall__", "n"] == 60
+    assert metrics.attrs["split_kind"] == "fixed_holdout"
+    assert metrics.attrs["n_windows"] == 6
+    assert metrics.attrs["train_end"].startswith(
+        str(risk_model.factor_returns.index[69].date())
+    )
+    assert metrics.attrs["test_start"].startswith(str(test_start.date()))
+    assert evaluator.calls[0]["contexts"][0].shape == (2, 64)
 
 
 def test_numpy_covariate_length_is_validated(risk_model):
