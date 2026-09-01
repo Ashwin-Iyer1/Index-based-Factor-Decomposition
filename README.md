@@ -224,21 +224,21 @@ pip install -r requirements-timesfm-cuda.txt  # NVIDIA GPU
 # Use requirements-timesfm.txt instead for CPU-only execution.
 ```
 
-Then run a 20-day joint forecast:
+Then run a 20-day joint forecast with a fixed final two-year holdout:
 
-```bash
-python BinaryClassification/forecast_factors.py \
-  --model-dir BinaryClassification/model \
-  --output-dir BinaryClassification/timesfm_output \
-  --horizon 20 --context-length 512 --device cuda \
-  --backtest-windows 6
+```powershell
+python .\BinaryClassification\forecast_factors.py `
+  --model-dir .\BinaryClassification\model `
+  --output-dir .\BinaryClassification\timesfm_output `
+  --horizon 20 --context-length 1536 --device cuda --batch-size 2 `
+  --test-start 2024-08-07
 ```
 
 The first run downloads the `google/timesfm-3.0-pytorch` checkpoint. Omit `--device` to
 let PyTorch choose CUDA when available and CPU otherwise. Verify a GPU installation with
 `python -c "import torch; print(torch.__version__, torch.cuda.is_available())"`; the
 version should include `+cu132` and availability should be `True`. Output includes factor point
-and quantile CSVs, metadata, and (when requested) rolling backtest metrics. Forecast rows
+and quantile CSVs, metadata, and (when requested) walk-forward backtest metrics. Forecast rows
 are numbered steps at the same frequency as the input. The forecast origin is the last
 row in `factor_returns.csv` (currently 2026-08-07 in the checked-in artifact), so refresh
 and refit the model before treating the output as current.
@@ -248,6 +248,11 @@ fast visual comparison with the zero-return baseline, forecast factor paths, and
 uncertainty bands. It reads the saved CSV output and does not reload the checkpoint.
 
 ![TimesFM backtest skill and directional accuracy](docs/img/timesfm_backtest_skill.png)
+
+For a fixed final holdout rather than selecting a trailing window count, use
+`--test-start YYYY-MM-DD`. For example, `--test-start 2024-08-07 --context-length 1536`
+evaluates non-overlapping 20-step forecasts only in the final two calendar years while
+using all available earlier factor history as causal context at the first origin.
 
 To project the point path onto a portfolio, save weights such as
 `{"AAPL": 0.4, "XOM": 0.3, "JPM": 0.3}` to a JSON file and add

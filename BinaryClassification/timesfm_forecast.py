@@ -353,6 +353,7 @@ class TimesFMFactorForecaster:
         metrics.attrs.update({
             "split_kind": split_kind,
             "history_start": str(history.index[0]),
+            "history_end": str(history.index[-1]),
             "train_end": str(history.index[first_origin - 1]),
             "test_start": str(history.index[first_origin]),
             "test_end": str(history.index[last_observation]),
@@ -360,6 +361,7 @@ class TimesFMFactorForecaster:
             "horizon": horizon,
             "stride": origins[1] - origins[0] if len(origins) > 1 else horizon,
             "context_length": context_length,
+            "first_context_observations": min(context_length, first_origin),
         })
         return metrics
 
