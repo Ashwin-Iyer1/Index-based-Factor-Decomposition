@@ -192,6 +192,95 @@ m.refit_covariance(vol_half_life=21)   # tech book: 29.4% -> 32.5% (recent vol i
 m.refit_covariance()                   # back to USE4 defaults
 ```
 
+### Zero-shot factor forecasting with TimesFM 3
+
+The saved factor-return matrix is also a natural multivariate time series: the 11 sector
+returns and 4 style returns co-evolve each day. `timesfm_forecast.py` sends those series
+to [Google TimesFM 3](https://github.com/google-research/timesfm) as **joint targets** in
+one zero-shot query. This uses the model's cross-variate attention instead of forecasting
+each factor independently. The result contains a point path and the nine marginal
+quantiles (0.1–0.9) for every factor.
+
+TimesFM is an additional forecasting layer, not a replacement for the risk model:
+
+- `factor_cov.csv` remains the estimate of current factor risk and correlation.
+- TimesFM forecasts conditional factor-return paths from `factor_returns.csv`.
+- A portfolio point forecast is $b^\top \hat f_t$, using the portfolio's current factor
+  exposures. Marginal factor quantiles are deliberately **not** added together because
+  that would not produce a valid portfolio quantile.
+- The rolling backtest compares TimesFM with a zero-return forecast. Daily financial
+  returns are hard to predict, so downstream use should depend on out-of-sample skill,
+  not on the fact that a foundation model produces plausible-looking output.
+
+Install the optional dependency in a clean environment (Python 3.11 or 3.12 is the
+most conservative choice for the PyTorch stack):
+
+```powershell
+# Windows PowerShell
+py -3.11 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements-timesfm.txt
+```
+
+Then run a 20-day joint forecast:
+
+```bash
+python BinaryClassification/forecast_factors.py \
+  --model-dir BinaryClassification/model \
+  --output-dir BinaryClassification/timesfm_output \
+  --horizon 20 --context-length 512 --device cuda \
+  --backtest-windows 6
+```
+
+The first run downloads the `google/timesfm-3.0-pytorch` checkpoint. Omit `--device` to
+let PyTorch choose CUDA when available and CPU otherwise. Output includes factor point
+and quantile CSVs, metadata, and (when requested) rolling backtest metrics. Forecast rows
+are numbered steps at the same frequency as the input. The forecast origin is the last
+row in `factor_returns.csv` (currently 2026-08-07 in the checked-in artifact), so refresh
+and refit the model before treating the output as current.
+
+To project the point path onto a portfolio, save weights such as
+`{"AAPL": 0.4, "XOM": 0.3, "JPM": 0.3}` to a JSON file and add
+`--portfolio-json weights.json`. To use TimesFM 3's covariate support, pass CSVs with
+time on rows and covariates on columns:
+
+- `--past-only-covariates`: values known only through the forecast origin, such as
+  realized VIX, volume, rates, or macro surprises; must cover the context window.
+- `--past-future-covariates`: values known through the entire horizon, such as an
+  earnings calendar, scheduled FOMC/CPI events, month-end flags, or pre-announced index
+  rebalances; must cover context + horizon. Do not put future-realized market data here.
+
+Covariate CSV rows are consumed positionally after taking the required trailing window;
+make sure their observation order exactly matches the factor-return rows and then the
+forecast steps.
+
+TimesFM 3 accepts at most 32 channels in a joint forward pass. With this project's 15
+default target factors, up to 17 covariate channels can be supplied; select a factor
+subset with `--factors` if more covariates are needed.
+
+Python callers can reuse one loaded checkpoint across forecasts:
+
+```python
+from risk_model import RiskModel
+from timesfm_forecast import TimesFMFactorForecaster
+
+m = RiskModel.load('BinaryClassification/model')
+tfm = TimesFMFactorForecaster(m, device='cuda')
+forecast, portfolio = tfm.forecast_portfolio(
+    {'AAPL': 0.4, 'XOM': 0.3, 'JPM': 0.3},
+    horizon=20,
+    context_length=512,
+)
+print(portfolio.cumulative_return.iloc[-1])
+print(tfm.backtest(horizon=20, windows=6).loc['__overall__'])
+```
+
+> **License:** the TimesFM source package is Apache-2.0, but Google's current TimesFM 3
+> pretrained weights use the separate TimesFM Non-Commercial License v1.0. They are
+> restricted to non-commercial, non-production use. This repository does not redistribute
+> the checkpoint. Obtain different weights or terms before any commercial/production use.
+
 ### Direct access
 
 - `m.exposures(w)` — the portfolio's 15+ factor exposures
@@ -210,6 +299,8 @@ m.refit_covariance()                   # back to USE4 defaults
 | `BinaryClassification/style_factors.ipynb` | Layers 2–3: styles, half-life covariance; fits and **saves the model**. |
 | `BinaryClassification/portfolio_analysis.ipynb` | The capabilities demo: reports, the AI factor, half-life control. |
 | `BinaryClassification/risk_model.py` | The library: save/load, portfolio analytics, EWMA/Newey-West estimators, custom factors. |
+| `BinaryClassification/timesfm_forecast.py` | TimesFM 3 adapter: joint factor forecasts, marginal quantiles, portfolio projection, rolling backtest. |
+| `BinaryClassification/forecast_factors.py` | CLI for factor/covariate/portfolio forecasts and CSV output. |
 | `BinaryClassification/model/` | Saved model artifacts (below). |
 | `BinaryClassification/sp500.csv` | Symbol → GICS sector map (current S&P 500 membership). |
 | `OLSReg/` | First pass: time-series OLS of single stocks on sector ETF returns; `getData.ipynb` documents building `8YearsData.pkl` from the raw Databento files. |
@@ -254,6 +345,10 @@ then use `portfolio_analysis.ipynb` or three lines of `risk_model.py` anywhere.
 - USE4 layers not implemented: eigenfactor risk adjustment, volatility regime adjustment.
 - Saved exposures are a snapshot of the fit date — re-run `style_factors.ipynb` after
   refreshing data.
+- TimesFM 3 is a general zero-shot forecaster, not a finance-specific alpha model. Its
+  factor-return forecasts need rolling out-of-sample validation and are not trading advice.
+- Portfolio projection holds today's exposures fixed through the horizon and covers factor
+  returns only; it does not forecast future exposure changes or stock-specific returns.
 
 ## Where to take it next
 

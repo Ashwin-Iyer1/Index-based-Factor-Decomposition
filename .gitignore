@@ -6,3 +6,5 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 /BinaryClassification/model_ai/
+/BinaryClassification/timesfm_output/
+/timesfm_output/
