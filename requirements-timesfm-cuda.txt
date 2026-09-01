@@ -1,0 +1,6 @@
+# NVIDIA GPU forecasting stack for Windows/Linux. CUDA 13.2 wheels are
+# compatible with newer NVIDIA drivers and support RTX 50-series GPUs.
+--extra-index-url https://download.pytorch.org/whl/cu132
+
+-r requirements-timesfm.txt
+torch==2.13.0+cu132

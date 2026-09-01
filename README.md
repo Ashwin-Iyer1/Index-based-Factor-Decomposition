@@ -220,7 +220,8 @@ most conservative choice for the PyTorch stack):
 py -3.11 -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -r requirements-timesfm.txt
+pip install -r requirements-timesfm-cuda.txt  # NVIDIA GPU
+# Use requirements-timesfm.txt instead for CPU-only execution.
 ```
 
 Then run a 20-day joint forecast:
@@ -234,7 +235,9 @@ python BinaryClassification/forecast_factors.py \
 ```
 
 The first run downloads the `google/timesfm-3.0-pytorch` checkpoint. Omit `--device` to
-let PyTorch choose CUDA when available and CPU otherwise. Output includes factor point
+let PyTorch choose CUDA when available and CPU otherwise. Verify a GPU installation with
+`python -c "import torch; print(torch.__version__, torch.cuda.is_available())"`; the
+version should include `+cu132` and availability should be `True`. Output includes factor point
 and quantile CSVs, metadata, and (when requested) rolling backtest metrics. Forecast rows
 are numbered steps at the same frequency as the input. The forecast origin is the last
 row in `factor_returns.csv` (currently 2026-08-07 in the checked-in artifact), so refresh
