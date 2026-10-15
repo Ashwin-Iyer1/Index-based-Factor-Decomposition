@@ -1,5 +1,7 @@
 # Factor Risk Model
 
+[Open the live workbench](https://ashwiniyer.com/demos/factor-risk/index.html) · [Read the case study](https://ashwiniyer.com/projects/factor-risk)
+
 ## Interactive portfolio workbench
 
 The [browser workbench](workbench/) turns the saved research model into an interactive
