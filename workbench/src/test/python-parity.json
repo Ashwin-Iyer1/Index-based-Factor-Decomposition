@@ -1,0 +1,277 @@
+[
+  {
+    "name": "balanced",
+    "weights": {
+      "AAPL": 0.2,
+      "JPM": 0.2,
+      "XOM": 0.15,
+      "UNH": 0.15,
+      "CAT": 0.15,
+      "PG": 0.15
+    },
+    "expected": {
+      "totalVol": 0.15201500359602216,
+      "factorVol": 0.1168843556724233,
+      "specificVol": 0.0971936660350924,
+      "net": 1.0,
+      "gross": 1.0,
+      "factorShare": 0.5912074063277696,
+      "factorContributions": {
+        "Information Technology": 0.1517774596670724,
+        "Financials": 0.11086145915168404,
+        "Energy": 0.09176379428000012,
+        "Consumer Staples": 0.0820847191206712,
+        "Health Care": 0.08033612881183963,
+        "Industrials": 0.07498793366555317,
+        "Size": 0.058113648738088025,
+        "Momentum": 0.04369984734698335,
+        "Communication Services": 0.0,
+        "Consumer Discretionary": 0.0,
+        "Materials": 0.0,
+        "Real Estate": 0.0,
+        "Utilities": 0.0,
+        "ResVol": -0.019368398135098563,
+        "Beta": -0.08304918631902383
+      },
+      "specificContributions": {
+        "AAPL": 0.1650474296152214,
+        "UNH": 0.12975928118882488,
+        "CAT": 0.044841112064739654,
+        "JPM": 0.032078919830095344,
+        "XOM": 0.018822148499733134,
+        "PG": 0.018243702473616064
+      },
+      "exposures": {
+        "Communication Services": 0.0,
+        "Consumer Discretionary": 0.0,
+        "Consumer Staples": 0.15,
+        "Energy": 0.15,
+        "Financials": 0.2,
+        "Health Care": 0.15,
+        "Industrials": 0.15,
+        "Information Technology": 0.2,
+        "Materials": 0.0,
+        "Real Estate": 0.0,
+        "Utilities": 0.0,
+        "Beta": -0.39848931627029593,
+        "Momentum": 0.4534891458914635,
+        "Size": 1.2906848656164573,
+        "ResVol": -0.3899261355811572
+      }
+    }
+  },
+  {
+    "name": "concentrated",
+    "weights": {
+      "NVDA": 0.4,
+      "MSFT": 0.3,
+      "AAPL": 0.3
+    },
+    "expected": {
+      "totalVol": 0.27681968176391925,
+      "factorVol": 0.2218863547462492,
+      "specificVol": 0.1655161073409448,
+      "net": 1.0,
+      "gross": 1.0,
+      "factorShare": 0.6424913140929697,
+      "factorContributions": {
+        "Information Technology": 0.4558688526875896,
+        "Size": 0.18209366935644464,
+        "ResVol": 0.0321444606033663,
+        "Momentum": 0.004662685938513984,
+        "Communication Services": 0.0,
+        "Consumer Discretionary": 0.0,
+        "Consumer Staples": 0.0,
+        "Energy": 0.0,
+        "Financials": 0.0,
+        "Health Care": 0.0,
+        "Industrials": 0.0,
+        "Materials": 0.0,
+        "Real Estate": 0.0,
+        "Utilities": 0.0,
+        "Beta": -0.03227835449294477
+      },
+      "specificContributions": {
+        "NVDA": 0.15795812647989207,
+        "AAPL": 0.11198768355651169,
+        "MSFT": 0.08756287587062658
+      },
+      "exposures": {
+        "Communication Services": 0.0,
+        "Consumer Discretionary": 0.0,
+        "Consumer Staples": 0.0,
+        "Energy": 0.0,
+        "Financials": 0.0,
+        "Health Care": 0.0,
+        "Industrials": 0.0,
+        "Information Technology": 1.0,
+        "Materials": 0.0,
+        "Real Estate": 0.0,
+        "Utilities": 0.0,
+        "Beta": -0.27755960095921656,
+        "Momentum": 0.1840599033242444,
+        "Size": 3.068294649536603,
+        "ResVol": 0.38836439988501287
+      }
+    }
+  },
+  {
+    "name": "longShort",
+    "weights": {
+      "AAPL": 0.7,
+      "MSFT": -0.4,
+      "JPM": 0.3
+    },
+    "expected": {
+      "totalVol": 0.27631710853352964,
+      "factorVol": 0.12662134627484847,
+      "specificVol": 0.24559759594889222,
+      "net": 0.5999999999999999,
+      "gross": 1.4000000000000001,
+      "factorShare": 0.2099898494528183,
+      "factorContributions": {
+        "Information Technology": 0.06784827147637856,
+        "Momentum": 0.06751570477961988,
+        "Financials": 0.04099932994452388,
+        "Size": 0.02819948656109063,
+        "Beta": 0.0053111257090267625,
+        "ResVol": 0.00011593098217856,
+        "Communication Services": 0.0,
+        "Consumer Discretionary": 0.0,
+        "Consumer Staples": 0.0,
+        "Energy": 0.0,
+        "Health Care": 0.0,
+        "Industrials": 0.0,
+        "Materials": 0.0,
+        "Real Estate": 0.0,
+        "Utilities": 0.0
+      },
+      "specificContributions": {
+        "AAPL": 0.6119306561749491,
+        "MSFT": 0.1562341139927864,
+        "JPM": 0.021845380379446153
+      },
+      "exposures": {
+        "Communication Services": 0.0,
+        "Consumer Discretionary": 0.0,
+        "Consumer Staples": 0.0,
+        "Energy": 0.0,
+        "Financials": 0.3,
+        "Health Care": 0.0,
+        "Industrials": 0.0,
+        "Information Technology": 0.29999999999999993,
+        "Materials": 0.0,
+        "Real Estate": 0.0,
+        "Utilities": 0.0,
+        "Beta": 0.06417282525315166,
+        "Momentum": 0.8515388846119647,
+        "Size": 1.1861936974377312,
+        "ResVol": 0.0031204086073067794
+      }
+    }
+  },
+  {
+    "name": "single",
+    "weights": {
+      "AAPL": 1
+    },
+    "expected": {
+      "totalVol": 0.3891776468342199,
+      "factorVol": 0.23687343583261455,
+      "specificVol": 0.308788303198604,
+      "net": 1.0,
+      "gross": 1.0,
+      "factorShare": 0.37045626472494614,
+      "factorContributions": {
+        "Information Technology": 0.22871927953006757,
+        "Size": 0.0996341886429235,
+        "ResVol": 0.03845216102116964,
+        "Momentum": 0.022490636863382915,
+        "Communication Services": 0.0,
+        "Consumer Discretionary": 0.0,
+        "Consumer Staples": 0.0,
+        "Energy": 0.0,
+        "Financials": 0.0,
+        "Health Care": 0.0,
+        "Industrials": 0.0,
+        "Materials": 0.0,
+        "Real Estate": 0.0,
+        "Utilities": 0.0,
+        "Beta": -0.018840001332597483
+      },
+      "specificContributions": {
+        "AAPL": 0.6295437352750538
+      },
+      "exposures": {
+        "Communication Services": 0.0,
+        "Consumer Discretionary": 0.0,
+        "Consumer Staples": 0.0,
+        "Energy": 0.0,
+        "Financials": 0.0,
+        "Health Care": 0.0,
+        "Industrials": 0.0,
+        "Information Technology": 1.0,
+        "Materials": 0.0,
+        "Real Estate": 0.0,
+        "Utilities": 0.0,
+        "Beta": -0.3472461727408738,
+        "Momentum": 0.6102018266787167,
+        "Size": 3.0682946495366026,
+        "ResVol": 0.7272269903318542
+      }
+    }
+  },
+  {
+    "name": "levered",
+    "weights": {
+      "AAPL": 1.4,
+      "JPM": 0.6
+    },
+    "expected": {
+      "totalVol": 0.5794644216368173,
+      "factorVol": 0.37712188087244314,
+      "specificVol": 0.43995238709446954,
+      "net": 2.0,
+      "gross": 2.0,
+      "factorShare": 0.423555095107426,
+      "factorContributions": {
+        "Information Technology": 0.24596906848385353,
+        "Size": 0.10233112814271368,
+        "Financials": 0.06029452892102493,
+        "Momentum": 0.024049882140049546,
+        "ResVol": 0.013497873675188735,
+        "Communication Services": 0.0,
+        "Consumer Discretionary": 0.0,
+        "Consumer Staples": 0.0,
+        "Energy": 0.0,
+        "Health Care": 0.0,
+        "Industrials": 0.0,
+        "Materials": 0.0,
+        "Real Estate": 0.0,
+        "Utilities": 0.0,
+        "Beta": -0.022587386255404466
+      },
+      "specificContributions": {
+        "AAPL": 0.556575649053187,
+        "JPM": 0.019869255839386955
+      },
+      "exposures": {
+        "Communication Services": 0.0,
+        "Consumer Discretionary": 0.0,
+        "Consumer Staples": 0.0,
+        "Energy": 0.0,
+        "Financials": 0.6,
+        "Health Care": 0.0,
+        "Industrials": 0.0,
+        "Information Technology": 1.4,
+        "Materials": 0.0,
+        "Real Estate": 0.0,
+        "Utilities": 0.0,
+        "Beta": -0.47326166858941365,
+        "Momentum": 1.0558851711090707,
+        "Size": 4.827023114504744,
+        "ResVol": 0.43706571679568973
+      }
+    }
+  }
+]

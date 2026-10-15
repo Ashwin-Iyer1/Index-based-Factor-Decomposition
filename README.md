@@ -1,5 +1,23 @@
 # Factor Risk Model
 
+## Interactive portfolio workbench
+
+The [browser workbench](workbench/) turns the saved research model into an interactive
+portfolio analysis tool: edit holdings, compare a pinned baseline, inspect signed
+factor and stock-level risk contributions, and export the result. It uses the
+**August 7, 2026 snapshot**, runs calculations locally, and needs no API key, Python
+server, market-data account, or forecasting checkpoint.
+
+```sh
+cd workbench
+npm ci
+npm run dev
+```
+
+The production build is a portable static site (`npm run build` → `workbench/dist/`)
+that works under any hosting subpath. See [workbench setup, calculation semantics,
+and verification](workbench/README.md). All original research remains below.
+
 A Barra-style multi-factor equity risk model for the S&P 500, built from eight years of
 daily OHLCV data. It explains stock returns with **11 GICS sector factors** and **4 style
 factors** (Beta, Momentum, Size, ResVol), estimates covariance with USE4-style **EWMA

@@ -8,3 +8,7 @@ __pycache__/
 /BinaryClassification/model_ai/
 /BinaryClassification/timesfm_output/
 /timesfm_output/
+/workbench/node_modules/
+/workbench/dist/
+/workbench/test-results/
+/workbench/playwright-report/
