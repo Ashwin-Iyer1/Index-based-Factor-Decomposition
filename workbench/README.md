@@ -95,6 +95,11 @@ inputs, import/export units and malformed model data. `npm run build` includes s
 TypeScript checking. The existing Python research tests run from the repository root
 with `python -m pytest -q`.
 
+GitHub Actions runs the Python research tests with their fake forecast evaluator,
+regenerates the public model and Python parity fixtures from the saved artifacts,
+then runs the browser tests and production build. CI does not download TimesFM
+weights, fetch market data, or require credentials.
+
 Browser QA covered changing weights, baseline deltas, invalid-input recovery, the
 methodology dialog, responsive charts and overflow at a 390-pixel viewport. These
 checks exercise the local workbench; publication and live-host verification are
